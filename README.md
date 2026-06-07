@@ -74,3 +74,6 @@ All endpoints except `/health` require an API key in the `X-API-Key` header.
 - Luhn algorithm validation
 - BIN-based bank and country lookup
 - Supports card numbers with spaces and hyphens
+
+## Postman
+[![Run in Postman](https://run.pstmn.io/button.svg)](https://raw.githubusercontent.com/BT-Builds/bin-lookup/main/postman_collection.json)
