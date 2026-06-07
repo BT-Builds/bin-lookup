@@ -6,6 +6,18 @@ from pydantic import BaseModel
 import re
 
 app = FastAPI(title="Credit Card BIN Lookup API", version="1.0.0")
+# === BT Builds Standard Middleware (auto-injected) ===
+from fastapi.middleware.cors import CORSMiddleware as _BTCors
+app.add_middleware(_BTCors, allow_origins=["*"], allow_methods=["*"],
+    allow_headers=["*"], expose_headers=["X-RateLimit-Limit","X-RateLimit-Remaining","X-RateLimit-Reset"])
+
+@app.middleware("http")
+async def _bt_add_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Powered-By"] = "btbuilds"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
 
 # Auth & rate limiting
 API_KEYS = set(filter(None, os.environ.get("API_KEYS", "free-demo-key").split(",")))
