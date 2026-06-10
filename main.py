@@ -20,7 +20,7 @@ async def _bt_add_headers(request, call_next):
 
 
 # Auth & rate limiting
-API_KEYS=*** set(filter(None, os.environ.get("API_KEYS", "free-demo-key").split(",")))
+API_KEYS = set(filter(None, os.environ.get("API_KEYS", "free-demo-key").split(",")))
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT_PER_MIN", "60"))
 _req_counts: dict = defaultdict(list)
 
