@@ -20,7 +20,7 @@ async def _bt_add_headers(request, call_next):
 
 
 # Auth & rate limiting
-API_KEYS = set(filter(None, os.environ.get("API_KEYS", "free-demo-key").split(",")))
+API_KEYS = set(filter(None, os.environ.get("API_KEYS", "free-demo-key").split(","))
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT_PER_MIN", "60"))
 _req_counts: dict = defaultdict(list)
 
@@ -69,18 +69,6 @@ BIN_PATTERNS = [
     (r"^30[0-5][0-9]{11}$", "Diners Club", "Credit", "Diners Club", "USA", "US"),
 ]
 
-class BINLookupRequest(BaseModel):
-    bin: str
-
-class BINLookupResponse(BaseModel):
-    bin: str
-    brand: str | None
-    type: str | None
-    bank: str | None
-    country: str | None
-    country_code: str | None
-    valid: bool
-
 def identify_card(card_number: str) -> dict:
     """Identify card brand and type from number using Luhn and BIN patterns."""
     clean_number = re.sub(r"\s|-", "", card_number)
@@ -117,6 +105,36 @@ def identify_card(card_number: str) -> dict:
     
     return {"brand": None, "type": None, "bank": None, "country": None, "country_code": None}
 
+def luhn_check(num: str) -> bool:
+    """Luhn algorithm validation."""
+    if not num.isdigit() or len(num) < 2:
+        return False
+    total = 0
+    reverse_digits = num[::-1]
+    for i, digit in enumerate(reverse_digits):
+        n = int(digit)
+        if i % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
+
+class BINLookupRequest(BaseModel):
+    bin: str
+
+class BINLookupResponse(BaseModel):
+    bin: str
+    brand: str | None
+    type: str | None
+    bank: str | None
+    country: str | None
+    country_code: str | None
+    valid: bool
+
+class BulkRequest(BaseModel):
+    items: list[str]
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -127,36 +145,68 @@ def bin_lookup(request: BINLookupRequest, _=Depends(auth)):
     valid = result["brand"] is not None
     return BINLookupResponse(bin=request.bin, **result, valid=valid)
 
+@app.post("/api/v1/bulk/lookup")
+def bulk_lookup(request: BulkRequest, _=Depends(auth)):
+    if len(request.items) > 1000:
+        raise HTTPException(400, "Max 1000 items per request")
+    
+    results = []
+    for item in request.items:
+        try:
+            result = identify_card(item)
+            valid = result["brand"] is not None
+            output = {"bin": item, **result, "valid": valid}
+            results.append({"input": item, "output": output, "error": None})
+        except Exception as e:
+            results.append({"input": item, "output": None, "error": str(e)})
+    
+    total = len(results)
+    successful = sum(1 for r in results if r["error"] is None)
+    return {"results": results, "total": total, "successful": successful}
+
 @app.post("/api/v1/validate")
 def bin_validate(request: BINLookupRequest, _=Depends(auth)):
     clean_number = re.sub(r"\s|-", "", request.bin)
-    
-    # Luhn algorithm
-    def luhn_check(num: str) -> bool:
-        total = 0
-        reverse_digits = num[::-1]
-        for i, digit in enumerate(reverse_digits):
-            n = int(digit)
-            if i % 2 == 1:
-                n *= 2
-                if n > 9:
-                    n -= 9
-            total += n
-        return total % 10 == 0
-    
     result = identify_card(request.bin)
-    luhn_valid = luhn_check(clean_number) if clean_number.isdigit() and len(clean_number) >= 2 else False
     
     return {
         "bin": request.bin,
         "valid_format": bool(re.match(r"^[0-9]{6,}$", clean_number)),
-        "luhn_valid": luhn_valid,
+        "luhn_valid": luhn_check(clean_number),
         "brand": result["brand"],
         "type": result["type"],
         "bank": result["bank"],
         "country": result["country"],
         "country_code": result["country_code"]
     }
+
+@app.post("/api/v1/bulk/validate")
+def bulk_validate(request: BulkRequest, _=Depends(auth)):
+    if len(request.items) > 1000:
+        raise HTTPException(400, "Max 1000 items per request")
+    
+    results = []
+    for item in request.items:
+        try:
+            clean_number = re.sub(r"\s|-", "", item)
+            result = identify_card(item)
+            output = {
+                "bin": item,
+                "valid_format": bool(re.match(r"^[0-9]{6,}$", clean_number)),
+                "luhn_valid": luhn_check(clean_number),
+                "brand": result["brand"],
+                "type": result["type"],
+                "bank": result["bank"],
+                "country": result["country"],
+                "country_code": result["country_code"]
+            }
+            results.append({"input": item, "output": output, "error": None})
+        except Exception as e:
+            results.append({"input": item, "output": None, "error": str(e)})
+    
+    total = len(results)
+    successful = sum(1 for r in results if r["error"] is None)
+    return {"results": results, "total": total, "successful": successful}
 
 try:
     from mangum import Mangum
