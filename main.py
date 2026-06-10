@@ -20,7 +20,7 @@ async def _bt_add_headers(request, call_next):
 
 
 # Auth & rate limiting
-API_KEYS = set(filter(None, os.environ.get("API_KEYS", "free-demo-key").split(","))
+API_KEYS=*** set(filter(None, os.environ.get("API_KEYS", "free-demo-key").split(",")))
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT_PER_MIN", "60"))
 _req_counts: dict = defaultdict(list)
 
@@ -68,6 +68,21 @@ BIN_PATTERNS = [
     (r"^35(?:2[89]|[3-8][0-9])[0-9]{12}$", "JCB", "Credit", "JCB Co.", "Japan", "JP"),
     (r"^30[0-5][0-9]{11}$", "Diners Club", "Credit", "Diners Club", "USA", "US"),
 ]
+
+class BINLookupRequest(BaseModel):
+    bin: str
+
+class BINLookupResponse(BaseModel):
+    bin: str
+    brand: str | None
+    type: str | None
+    bank: str | None
+    country: str | None
+    country_code: str | None
+    valid: bool
+
+class BulkRequest(BaseModel):
+    items: list[str]
 
 def identify_card(card_number: str) -> dict:
     """Identify card brand and type from number using Luhn and BIN patterns."""
@@ -119,21 +134,6 @@ def luhn_check(num: str) -> bool:
                 n -= 9
         total += n
     return total % 10 == 0
-
-class BINLookupRequest(BaseModel):
-    bin: str
-
-class BINLookupResponse(BaseModel):
-    bin: str
-    brand: str | None
-    type: str | None
-    bank: str | None
-    country: str | None
-    country_code: str | None
-    valid: bool
-
-class BulkRequest(BaseModel):
-    items: list[str]
 
 @app.get("/health")
 def health():
